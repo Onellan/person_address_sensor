@@ -4,7 +4,9 @@
   "documentation": "https://github.com/YOUR_USERNAME/person_address_sensor",
   "requirements": ["geopy==2.4.1"],
   "codeowners": ["@onellan"],
-  "version": "3.0.0",
+  "version": "5.1.0",
   "config_flow": true,
-  "iot_class": "local_push"
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "homeassistant": "2026.3.0"
 }

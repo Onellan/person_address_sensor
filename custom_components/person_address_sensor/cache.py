@@ -2,6 +2,7 @@ import json
 import time
 from pathlib import Path
 
+
 class AddressCache:
 
     def __init__(self, path):

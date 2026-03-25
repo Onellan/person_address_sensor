@@ -1,5 +1,6 @@
 from geopy.geocoders import Nominatim
 
+
 geolocator = Nominatim(user_agent="ha_person_address_sensor")
 
 

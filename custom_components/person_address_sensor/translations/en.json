@@ -1,0 +1,10 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Person Address Sensor",
+        "description": "Configure address tracking"
+      }
+    }
+  }
+}
