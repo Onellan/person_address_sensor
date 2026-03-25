@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+import aiohttp
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_reverse_lookup(
@@ -20,14 +25,44 @@ async def async_reverse_lookup(
         "accept-language": "en",
     }
     headers = {
-        "User-Agent": "HomeAssistantPersonAddressSensor/6.0.0",
+        "User-Agent": "HomeAssistantPersonAddressSensor/6.0.1",
     }
 
-    async with session.get(url, params=params, headers=headers, timeout=15) as resp:
-        if resp.status != 200:
-            return None
+    try:
+        async with session.get(url, params=params, headers=headers, timeout=15) as resp:
+            if resp.status != 200:
+                _LOGGER.warning(
+                    "Reverse geocode failed for lat=%s lon=%s with HTTP %s",
+                    lat,
+                    lon,
+                    resp.status,
+                )
+                return None
 
-        payload = await resp.json()
+            payload = await resp.json()
+
+    except TimeoutError:
+        _LOGGER.warning(
+            "Reverse geocode timed out for lat=%s lon=%s",
+            lat,
+            lon,
+        )
+        return None
+    except aiohttp.ClientError as err:
+        _LOGGER.warning(
+            "Reverse geocode client error for lat=%s lon=%s: %s",
+            lat,
+            lon,
+            err,
+        )
+        return None
+    except Exception:
+        _LOGGER.exception(
+            "Unexpected reverse geocode error for lat=%s lon=%s",
+            lat,
+            lon,
+        )
+        return None
 
     address = payload.get("address", {})
     display_name = payload.get("display_name")

@@ -79,6 +79,7 @@ class PersonAddressSensor(SensorEntity):
         self._attr_unique_id = f"{entry.entry_id}_combined_address"
         self._attr_native_value = None
         self._attr_extra_state_attributes = {}
+        self._attr_available = True
 
         self._last_lat: float | None = None
         self._last_lon: float | None = None
@@ -96,10 +97,6 @@ class PersonAddressSensor(SensorEntity):
 
     async def async_added_to_hass(self) -> None:
         """Handle entity added to HA."""
-        current_state = self.hass.states.get(self.person_entity_id)
-        if current_state is not None:
-            await self._async_process_state(current_state, force=True)
-
         self.async_on_remove(
             async_track_state_change_event(
                 self.hass,
@@ -108,6 +105,13 @@ class PersonAddressSensor(SensorEntity):
             )
         )
 
+        current_state = self.hass.states.get(self.person_entity_id)
+        if current_state is not None:
+            # Do not block entity registration on startup.
+            self.hass.async_create_task(
+                self._async_safe_process_state(current_state, force=True)
+            )
+
     @callback
     def _async_handle_state_event(self, event) -> None:
         """Handle person state-change event."""
@@ -115,7 +119,7 @@ class PersonAddressSensor(SensorEntity):
         if new_state is None:
             return
 
-        self.hass.async_create_task(self._async_process_state(new_state))
+        self.hass.async_create_task(self._async_safe_process_state(new_state))
 
     async def async_force_refresh(self) -> None:
         """Force an immediate refresh from current coordinates."""
@@ -127,8 +131,25 @@ class PersonAddressSensor(SensorEntity):
             )
             return
 
-        _LOGGER.debug("Force refresh requested for %s", self.person_entity_id)
-        await self._async_process_state(state, force=True)
+        _LOGGER.warning("Force refresh requested for %s", self.person_entity_id)
+        await self._async_safe_process_state(state, force=True)
+
+    async def _async_safe_process_state(self, state, force: bool = False) -> None:
+        """Process state safely without breaking entity lifecycle."""
+        try:
+            await self._async_process_state(state, force=force)
+        except Exception as err:
+            self._attr_available = False
+            self._attr_extra_state_attributes = {
+                "person_entity_id": self.person_entity_id,
+                "status": "update_failed",
+                "last_error": str(err),
+            }
+            self.async_write_ha_state()
+            _LOGGER.exception(
+                "Failed updating address sensor for %s",
+                self.person_entity_id,
+            )
 
     async def _async_process_state(self, state, force: bool = False) -> None:
         """Process current person state and update sensor."""
@@ -136,15 +157,14 @@ class PersonAddressSensor(SensorEntity):
         lon = state.attributes.get(ATTR_LONGITUDE)
 
         if lat is None or lon is None:
+            self._attr_available = True
             self._attr_native_value = None
             self._attr_extra_state_attributes = {
                 "person_entity_id": self.person_entity_id,
                 "status": "no_coordinates",
             }
             self.async_write_ha_state()
-            _LOGGER.warning(
-                "No coordinates available for %s", self.person_entity_id
-            )
+            _LOGGER.warning("No coordinates available for %s", self.person_entity_id)
             return
 
         now_ts = self.hass.loop.time()
@@ -175,42 +195,76 @@ class PersonAddressSensor(SensorEntity):
         if self.prefer_zone:
             zone_name = _find_zone_name(self.hass, lat, lon)
 
-        if zone_name:
-            address_data: dict[str, Any] = {
-                "zone": zone_name,
-                "full_address": zone_name,
-            }
+        cache_key = f"{round(lat, 6)},{round(lon, 6)}"
+        address_data = {} if force else (await self.cache.async_get(cache_key) or {})
+
+        if address_data:
+            _LOGGER.debug("Using cached address for %s", self.person_entity_id)
+
+        # Always attempt reverse geocoding if we do not already have cached data.
+        # This keeps road/suburb/city/state/country available even when a zone matches.
+        if not address_data:
             _LOGGER.debug(
-                "Using zone '%s' for %s", zone_name, self.person_entity_id
+                "Reverse geocoding %s at lat=%s lon=%s",
+                self.person_entity_id,
+                lat,
+                lon,
             )
-        else:
-            cache_key = f"{round(lat, 6)},{round(lon, 6)}"
-            address_data = {} if force else (await self.cache.async_get(cache_key) or {})
-
-            if address_data:
-                _LOGGER.debug("Using cached address for %s", self.person_entity_id)
-
-            if not address_data:
-                _LOGGER.debug(
-                    "Reverse geocoding %s at lat=%s lon=%s",
-                    self.person_entity_id,
-                    lat,
-                    lon,
-                )
-                looked_up = await async_reverse_lookup(self.hass, lat, lon)
-                if looked_up is None:
+            looked_up = await async_reverse_lookup(self.hass, lat, lon)
+            if looked_up is None:
+                # If geocoding fails but zone exists, still provide the zone as fallback.
+                if zone_name:
+                    address_data = {
+                        "zone": zone_name,
+                        "full_address": zone_name,
+                    }
+                    _LOGGER.warning(
+                        "Reverse geocoding failed for %s, falling back to zone '%s'",
+                        self.person_entity_id,
+                        zone_name,
+                    )
+                else:
+                    self._attr_available = True
+                    self._attr_native_value = None
+                    self._attr_extra_state_attributes = {
+                        "person_entity_id": self.person_entity_id,
+                        "status": "geocode_failed",
+                        "latitude": lat,
+                        "longitude": lon,
+                    }
+                    self.async_write_ha_state()
                     _LOGGER.warning(
                         "Reverse geocoding returned no result for %s",
                         self.person_entity_id,
                     )
                     return
+            else:
                 address_data = looked_up
                 await self.cache.async_set(cache_key, address_data)
 
+        # Overlay zone information without destroying normal address fields.
+        if zone_name:
+            address_data["zone"] = zone_name
+            if self.prefer_zone and "full_address" not in self.fields:
+                _LOGGER.debug(
+                    "Zone '%s' available for %s, while preserving geocoded fields",
+                    zone_name,
+                    self.person_entity_id,
+                )
+
         combined = self._format_selected_fields(address_data)
 
+        # Fallbacks so sensor state is not blank when data exists.
+        if not combined:
+            combined = (
+                address_data.get("full_address")
+                or address_data.get("zone")
+                or None
+            )
+
         self._person_name = self._resolve_person_name()
-        self._attr_native_value = combined or None
+        self._attr_available = True
+        self._attr_native_value = combined
         self._attr_extra_state_attributes = {
             "person_entity_id": self.person_entity_id,
             "selected_fields": self.fields,
@@ -225,7 +279,7 @@ class PersonAddressSensor(SensorEntity):
         self._last_update_ts = now_ts
 
         self.async_write_ha_state()
-        _LOGGER.debug(
+        _LOGGER.warning(
             "Updated %s address sensor to '%s'",
             self.person_entity_id,
             self._attr_native_value,
@@ -240,17 +294,16 @@ class PersonAddressSensor(SensorEntity):
 
     def _format_selected_fields(self, address_data: dict[str, Any]) -> str:
         """Build one comma-separated string from selected fields."""
-        if self.prefer_zone and address_data.get("zone") and "zone" in self.fields:
-            return str(address_data["zone"])
-
         values: list[str] = []
         for field in self.fields:
             value = address_data.get(field)
             if value:
                 values.append(str(value))
 
-        return ", ".join(values)
+        if values:
+            return ", ".join(values)
 
+        return ""
 
 def _distance_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Return approximate Haversine distance in meters."""

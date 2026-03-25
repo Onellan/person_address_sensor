@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
+
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 
 from .const import DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -50,5 +54,12 @@ class PersonAddressForceUpdateButton(ButtonEntity):
     async def async_press(self) -> None:
         """Force a refresh of the linked sensor."""
         sensor = self._sensor
-        if sensor is not None:
-            await sensor.async_force_refresh()
+        if sensor is None:
+            _LOGGER.warning(
+                "Force update pressed for %s but sensor instance was not available",
+                self.entry.title,
+            )
+            return
+
+        _LOGGER.warning("Force update button pressed for %s", self.entry.title)
+        await sensor.async_force_refresh()
