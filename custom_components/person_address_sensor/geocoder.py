@@ -1,22 +1,20 @@
-from geopy.geocoders import Nominatim
+import logging
+from aiohttp import ClientSession
 
-
-geolocator = Nominatim(user_agent="ha_person_address_sensor")
+_LOGGER = logging.getLogger(__name__)
 
 
 async def reverse_lookup(hass, lat, lon):
-
-    def lookup():
-
-        location = geolocator.reverse(
-            (lat, lon),
-            addressdetails=True,
-            language="en",
-        )
-
-        if not location:
-            return None
-
-        return location.raw.get("address")
-
-    return await hass.async_add_executor_job(lookup)
+    """Do a country-aware reverse geocode using Nominatim."""
+    url = f"https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={lat}&lon={lon}&addressdetails=1"
+    try:
+        async with ClientSession() as session:
+            async with session.get(url, headers={"User-Agent": "HomeAssistantPersonAddress/1.0"}) as resp:
+                if resp.status != 200:
+                    _LOGGER.warning("Failed to reverse geocode: HTTP %s", resp.status)
+                    return None
+                data = await resp.json()
+                return data
+    except Exception as e:
+        _LOGGER.warning("Reverse geocode error: %s", e)
+        return None
