@@ -1,62 +1,63 @@
-import logging
-from homeassistant.components.sensor import SensorEntity
+"""Sensor platform for Person Address Sensor."""
+import json
+from pathlib import Path
+from homeassistant.helpers.entity import SensorEntity
 from homeassistant.helpers.event import async_track_state_change
 from .cache import AddressCache
-from .geocoder import reverse_lookup
-from .const import DOMAIN, CACHE_FILE
 
-_LOGGER = logging.getLogger(__name__)
+DOMAIN = "person_address_sensor"
+
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    person = entry.data["person"]
-    fields = entry.data.get("fields", ["full_address"])
-    interval = entry.data.get("interval", 300)
-
-    cache_path = hass.config.path(CACHE_FILE)
+    cache_path = hass.config.path("person_address_cache.json")
     cache = AddressCache(cache_path, hass)
     await cache.load()
 
-    async_add_entities([PersonAddressSensor(hass, person, fields, cache, interval)], True)
+    sensors = [PersonAddressSensor(entry, cache)]
+    async_add_entities(sensors, True)
+
 
 class PersonAddressSensor(SensorEntity):
-    def __init__(self, hass, person_entity_id, fields, cache, interval):
-        self.hass = hass
-        self.entity_id_person = person_entity_id
-        self.fields = fields
-        self.cache = cache
-        self._attr_name = f"{person_entity_id.split('.')[-1]}_address"
-        self._attr_unique_id = f"{person_entity_id}_address"
-        self._interval = interval
+    """Sensor that combines all address fields."""
+
+    def __init__(self, entry, cache):
+        self._entry = entry
+        self._cache = cache
         self._state = None
 
-    async def async_added_to_hass(self):
-        state = self.hass.states.get(self.entity_id_person)
-        await self._update_from_state(state)
-        async_track_state_change(self.hass, self.entity_id_person, self._update_from_state)
-
-    async def _update_from_state(self, entity, old_state=None, new_state=None):
-        state_obj = new_state or entity
-        if not state_obj:
-            return
-
-        lat = getattr(state_obj, "attributes", {}).get("latitude")
-        lon = getattr(state_obj, "attributes", {}).get("longitude")
-        if lat is None or lon is None:
-            return
-
-        key = f"{lat},{lon}"
-        address_data = self.cache.get(key)
-        if not address_data:
-            address_data = await reverse_lookup(lat, lon)
-            if address_data:
-                await self.cache.set(key, address_data)
-
-        if address_data:
-            attr = address_data.get("address", {})
-            values = [attr.get(f, "") for f in self.fields]
-            self._state = ", ".join([v for v in values if v])
-            self.async_write_ha_state()
+    @property
+    def name(self):
+        return f"Person {self._entry.title()} Address"
 
     @property
-    def native_value(self):
+    def state(self):
         return self._state
+
+    async def async_added_to_hass(self):
+        """Track state changes for the person entity."""
+        entity_id = self._entry.data.get("entity_id")
+        if entity_id:
+            async_track_state_change(
+                self.hass, [entity_id], self._async_state_changed
+            )
+
+    async def _async_state_changed(self, entity_id, old_state, new_state):
+        """Update sensor state on person entity change."""
+        if new_state is None:
+            return
+
+        addr = new_state.attributes.get("address", {})
+        country = addr.get("country", "")
+        fields = addr.keys()
+        combined = ", ".join(f"{k}: {addr[k]}" for k in fields)
+        if country:
+            combined += f" ({country})"
+
+        self._state = combined
+        await self.async_update_cache(addr)
+        self.async_write_ha_state()
+
+    async def async_update_cache(self, addr_data):
+        """Save to cache async-safe."""
+        self._cache.cache[self._entry.entry_id] = addr_data
+        await self._cache.save()
