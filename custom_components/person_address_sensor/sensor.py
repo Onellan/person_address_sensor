@@ -127,7 +127,7 @@ class PersonAddressSensor(SensorEntity):
                 if not address_data:
                     return
 
-                self.cache.set(key, address_data)
+                await self.cache.set(key, address_data)
 
 
             formatted = self._format_selected_fields(address_data)
