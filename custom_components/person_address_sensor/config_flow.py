@@ -1,21 +1,17 @@
 from homeassistant import config_entries
 from homeassistant.helpers import selector
 import voluptuous as vol
-
 from .const import DOMAIN, FIELD_OPTIONS
 from .options_flow import OptionsFlowHandler
 
-
 class PersonAddressSensorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Person Address Sensor."""
-
     VERSION = 1
 
     async def async_step_user(self, user_input=None):
-        if user_input is not None:
+        if user_input:
             return self.async_create_entry(
-                title=user_input["person"],
-                data=user_input,
+                title=str(user_input["person"]),
+                data=user_input
             )
 
         schema = vol.Schema(
@@ -27,17 +23,17 @@ class PersonAddressSensorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     selector.SelectSelectorConfig(
                         options=FIELD_OPTIONS,
                         multiple=True,
-                        mode="dropdown",
+                        mode="dropdown"
                     )
                 ),
                 vol.Required("interval", default=300): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=60, max=3600, step=60)
-                ),
+                )
             }
         )
-
         return self.async_show_form(step_id="user", data_schema=schema)
 
     @staticmethod
+    @property
     def async_get_options_flow(config_entry):
         return OptionsFlowHandler(config_entry)

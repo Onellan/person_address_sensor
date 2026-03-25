@@ -1,6 +1,6 @@
 DOMAIN = "person_address_sensor"
-DEFAULT_INTERVAL = 300  # 5 minutes
-CACHE_TIMEOUT = 3600  # 1 hour
+DEFAULT_INTERVAL = 300  # seconds
+CACHE_FILE = "person_address_cache.json"
 
 FIELD_OPTIONS = [
     "full_address",

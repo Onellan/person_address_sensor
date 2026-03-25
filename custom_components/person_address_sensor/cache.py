@@ -13,20 +13,30 @@ class AddressCache:
         self.path = path
         self.hass = hass
         self.cache = {}
-        self._load_cache()
 
-    def _load_cache(self):
+    async def load(self):
+        """Load cache async-safe."""
         if self.path.exists():
+            def _read():
+                try:
+                    return json.loads(self.path.read_text())
+                except Exception as e:
+                    _LOGGER.warning("Failed to read cache: %s", e)
+                    return {}
+            self.cache = await self.hass.async_add_executor_job(_read)
+
+    async def save(self):
+        """Save cache async-safe."""
+        def _write():
             try:
-                self.cache = json.loads(self.path.read_text())
+                self.path.write_text(json.dumps(self.cache))
             except Exception as e:
-                _LOGGER.warning("Failed to load cache: %s", e)
-                self.cache = {}
+                _LOGGER.warning("Failed to write cache: %s", e)
+        await self.hass.async_add_executor_job(_write)
 
     async def set(self, key, value):
-        """Set cache value async-safe."""
         self.cache[key] = (value, int(self.hass.loop.time()))
-        await self.hass.async_add_executor_job(self._write_cache_to_disk)
+        await self.save()
 
     def get(self, key):
         entry = self.cache.get(key)
@@ -36,9 +46,3 @@ class AddressCache:
         if self.hass.loop.time() - timestamp > CACHE_TIMEOUT:
             return None
         return value
-
-    def _write_cache_to_disk(self):
-        try:
-            self.path.write_text(json.dumps(self.cache))
-        except Exception as e:
-            _LOGGER.warning("Failed to write cache: %s", e)
