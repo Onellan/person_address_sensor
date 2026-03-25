@@ -34,6 +34,5 @@ class PersonAddressSensorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="user", data_schema=schema)
 
     @staticmethod
-    @property
     def async_get_options_flow(config_entry):
         return OptionsFlowHandler(config_entry)

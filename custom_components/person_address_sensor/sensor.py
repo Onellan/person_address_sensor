@@ -1,6 +1,6 @@
 import logging
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.entity import async_track_state_change
+from homeassistant.helpers.event import async_track_state_change
 from .cache import AddressCache
 from .geocoder import reverse_lookup
 from .const import DOMAIN, CACHE_FILE
