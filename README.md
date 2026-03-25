@@ -5,6 +5,7 @@ A Home Assistant custom integration that creates one combined address sensor for
 ## Features
 
 - Select a person from a dropdown
+- Prevent duplicate sensors for the same person
 - Select which address fields to show
 - One combined sensor with comma-separated fields
 - Immediate population from the person's current location
@@ -13,6 +14,8 @@ A Home Assistant custom integration that creates one combined address sensor for
 - Minimum update interval
 - Minimum movement threshold
 - Editable later through the integration options
+- Reconfigure the tracked person later
+- Force update button for each configured person
 
 ## Installation with HACS
 
@@ -50,3 +53,6 @@ You can configure:
 - Update interval
 - Distance threshold
 - Zone preference
+
+### Force update
+Each configured person entry includes a **Force update** button entity that triggers an immediate refresh.

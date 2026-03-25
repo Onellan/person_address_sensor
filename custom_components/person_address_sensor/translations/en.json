@@ -1,6 +1,10 @@
 {
   "title": "Person Address Sensor",
   "config": {
+    "abort": {
+      "already_configured": "This person already has a configured address sensor.",
+      "reconfigure_successful": "Tracked person updated successfully."
+    },
     "initiate_flow": {
       "user": "Add person address sensor",
       "reconfigure": "Change tracked person"
@@ -24,9 +28,6 @@
           "person_entity_id": "Person"
         }
       }
-    },
-    "abort": {
-      "reconfigure_successful": "Tracked person updated successfully."
     }
   },
   "options": {

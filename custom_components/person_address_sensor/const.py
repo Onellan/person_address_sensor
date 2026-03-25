@@ -30,3 +30,18 @@ FIELD_OPTIONS: list[str] = [
     "country_code",
     "zone",
 ]
+
+FIELD_LABELS: dict[str, str] = {
+    "full_address": "Full address",
+    "house_number": "House number",
+    "road": "Road / street",
+    "suburb": "Suburb",
+    "neighbourhood": "Neighbourhood",
+    "city": "City / town",
+    "county": "County",
+    "state": "State / province",
+    "postcode": "Postcode",
+    "country": "Country",
+    "country_code": "Country code",
+    "zone": "Home Assistant zone",
+}

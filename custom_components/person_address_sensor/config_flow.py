@@ -132,12 +132,15 @@ def _entry_setting(entry, key: str, default: Any) -> Any:
 class PersonAddressConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle config flow for Person Address Sensor."""
 
-    VERSION = 2
+    VERSION = 3
 
     async def async_step_user(self, user_input=None):
         """Handle the initial setup flow."""
         if user_input is not None:
             person_entity_id = user_input[CONF_PERSON_ENTITY_ID]
+
+            await self.async_set_unique_id(person_entity_id)
+            self._abort_if_unique_id_configured()
 
             return self.async_create_entry(
                 title=person_entity_id,
@@ -171,9 +174,25 @@ class PersonAddressConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             new_person = user_input[CONF_PERSON_ENTITY_ID]
 
+            existing_entry = next(
+                (
+                    existing
+                    for existing in self._async_current_entries()
+                    if existing.entry_id != entry.entry_id
+                    and (
+                        existing.unique_id == new_person
+                        or existing.data.get(CONF_PERSON_ENTITY_ID) == new_person
+                    )
+                ),
+                None,
+            )
+            if existing_entry is not None:
+                return self.async_abort(reason="already_configured")
+
             self.hass.config_entries.async_update_entry(
                 entry,
                 title=new_person,
+                unique_id=new_person,
                 data={
                     **entry.data,
                     CONF_PERSON_ENTITY_ID: new_person,
