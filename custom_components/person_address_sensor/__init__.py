@@ -12,6 +12,8 @@ async def async_setup(hass: HomeAssistant, config: dict):
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Set up sensor from a config entry."""
-    # Forward to sensor platform
+    # Import inside async to avoid blocking event loop
+    from . import sensor
+
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
     return True

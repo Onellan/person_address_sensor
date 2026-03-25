@@ -11,7 +11,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None):
         """Manage options."""
         options_schema = vol.Schema({
-            vol.Optional("fields", default=self.config_entry.options.get("fields", [])): list,
+            vol.Optional(
+                "fields",
+                default=self.config_entry.options.get("fields", [])
+            ): list,
         })
 
         if user_input is not None:

@@ -4,6 +4,8 @@ from pathlib import Path
 
 
 class AddressCache:
+    """Simple async-safe cache for person addresses."""
+
     def __init__(self, cache_path, hass):
         self.hass = hass
         self.path = Path(cache_path)
