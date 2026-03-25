@@ -7,9 +7,9 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.components.zone import async_active_zone
 
-from .const import DEFAULT_DISTANCE_THRESHOLD
 from .cache import AddressCache
 from .geocoder import reverse_lookup
+from .const import DEFAULT_DISTANCE_THRESHOLD
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -79,21 +79,31 @@ class PersonAddressSensor(SensorEntity):
         if lat is None or lon is None:
             return
 
+
         if self.last_lat and self.last_lon:
 
-            if self._distance(self.last_lat, self.last_lon, lat, lon) < DEFAULT_DISTANCE_THRESHOLD:
+            if self._distance(
+                self.last_lat,
+                self.last_lon,
+                lat,
+                lon
+            ) < DEFAULT_DISTANCE_THRESHOLD:
                 return
+
 
         if self.last_update:
 
             if datetime.now() - self.last_update < timedelta(seconds=self.interval):
                 return
 
+
         zone = async_active_zone(self.hass, lat, lon)
 
-        if zone:
 
-            address = zone.name
+        if zone and "zone" in self.fields:
+
+            formatted = zone.name
+
 
         else:
 
@@ -101,27 +111,82 @@ class PersonAddressSensor(SensorEntity):
 
             cached = self.cache.get(key)
 
+
             if cached:
 
-                address = cached
+                address_data = cached
 
             else:
 
-                address = await reverse_lookup(self.hass, lat, lon)
+                address_data = await reverse_lookup(
+                    self.hass,
+                    lat,
+                    lon,
+                )
 
-                if address:
-                    self.cache.set(key, address)
+                if not address_data:
+                    return
 
-        if not address:
-            return
+                self.cache.set(key, address_data)
 
-        self._attr_native_value = address
+
+            formatted = self._format_selected_fields(address_data)
+
+
+        self._attr_native_value = formatted
 
         self.last_update = datetime.now()
         self.last_lat = lat
         self.last_lon = lon
 
         self.async_write_ha_state()
+
+
+    def _format_selected_fields(self, address):
+
+        components = []
+
+        field_map = {
+
+            "street":
+                address.get("road"),
+
+            "suburb":
+                address.get("suburb")
+                or address.get("neighbourhood")
+                or address.get("residential"),
+
+            "city":
+                address.get("city")
+                or address.get("town")
+                or address.get("village")
+                or address.get("municipality"),
+
+            "province":
+                address.get("state")
+                or address.get("province"),
+
+            "postcode":
+                address.get("postcode"),
+
+            "country":
+                address.get("country"),
+
+            "full_address":
+                address.get("road"),
+
+        }
+
+
+        for field in self.fields:
+
+            value = field_map.get(field)
+
+            if value:
+                components.append(value)
+
+
+        return ", ".join(components)
 
 
     def _distance(self, lat1, lon1, lat2, lon2):
