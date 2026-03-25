@@ -1,3 +1,4 @@
+# sensor.py
 from __future__ import annotations
 
 import logging
@@ -245,22 +246,12 @@ class PersonAddressSensor(SensorEntity):
         # Overlay zone information without destroying normal address fields.
         if zone_name:
             address_data["zone"] = zone_name
-            if self.prefer_zone and "full_address" not in self.fields:
-                _LOGGER.debug(
-                    "Zone '%s' available for %s, while preserving geocoded fields",
-                    zone_name,
-                    self.person_entity_id,
-                )
 
         combined = self._format_selected_fields(address_data)
 
         # Fallbacks so sensor state is not blank when data exists.
         if not combined:
-            combined = (
-                address_data.get("full_address")
-                or address_data.get("zone")
-                or None
-            )
+            combined = address_data.get("full_address") or address_data.get("zone") or None
 
         self._person_name = self._resolve_person_name()
         self._attr_available = True
@@ -304,6 +295,7 @@ class PersonAddressSensor(SensorEntity):
             return ", ".join(values)
 
         return ""
+
 
 def _distance_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Return approximate Haversine distance in meters."""

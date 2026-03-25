@@ -1,10 +1,10 @@
 {
   "domain": "person_address_sensor",
   "name": "Person Address Sensor",
-  "version": "6.0.0",
+  "version": "6.0.1",
   "documentation": "https://github.com/onellan/person_address_sensor",
   "config_flow": true,
-  "integration_type": "integration",
+  "integration_type": "service",
   "iot_class": "local_push",
   "requirements": [],
   "codeowners": ["@onellan"],
