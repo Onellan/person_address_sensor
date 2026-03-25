@@ -7,59 +7,132 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.components.zone import async_active_zone
 
-from .const import (
-    DOMAIN,
-    DEFAULT_INTERVAL,
-    DEFAULT_DISTANCE_THRESHOLD,
-)
-
+from .const import DEFAULT_DISTANCE_THRESHOLD
 from .cache import AddressCache
 from .geocoder import reverse_lookup
+
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
 
-    yaml_config = hass.data.get(DOMAIN, {}).get("yaml")
+    cache_path = Path(hass.config.path("person_address_cache.json"))
+    cache = AddressCache(cache_path)
 
-    sensors = []
+    sensor = PersonAddressSensor(
+        hass,
+        entry.data["person"],
+        entry.data["fields"],
+        entry.data["interval"],
+        cache,
+    )
 
-    if yaml_config:
-
-        cache_path = Path(hass.config.path("person_address_cache.json"))
-
-        cache = AddressCache(cache_path)
-
-        for person in yaml_config.get("persons", []):
-
-            sensors.append(PersonAddressSensor(hass, person, cache))
-
-    async_add_entities(sensors)
+    async_add_entities([sensor], True)
 
 
 class PersonAddressSensor(SensorEntity):
 
-    def __init__(self, hass, config, cache):
+    def __init__(self, hass, person, fields, interval, cache):
 
         self.hass = hass
-        self.person = config["person"]
-        self.interval = config.get("interval", DEFAULT_INTERVAL)
-        self.distance_threshold = config.get("distance_threshold", DEFAULT_DISTANCE_THRESHOLD)
-        self.template = config.get("format_template")
+        self.person = person
+        self.fields = fields
+        self.interval = interval
         self.cache = cache
 
         self.last_update = None
         self.last_lat = None
         self.last_lon = None
 
-        self._attr_name = f"{self.person}_address"
+        self._attr_name = f"{person.replace('.', '_')}_address"
+        self._attr_native_value = None
+
 
     async def async_added_to_hass(self):
+
+        state = self.hass.states.get(self.person)
+
+        if state:
+            await self._update_from_state(state)
 
         async_track_state_change_event(
             self.hass,
             [self.person],
-            self._state_changed
+            self._handle_state_change
         )
+
+
+    async def _handle_state_change(self, event):
+
+        new_state = event.data.get("new_state")
+
+        if new_state:
+            await self._update_from_state(new_state)
+
+
+    async def _update_from_state(self, state):
+
+        lat = state.attributes.get("latitude")
+        lon = state.attributes.get("longitude")
+
+        if lat is None or lon is None:
+            return
+
+        if self.last_lat and self.last_lon:
+
+            if self._distance(self.last_lat, self.last_lon, lat, lon) < DEFAULT_DISTANCE_THRESHOLD:
+                return
+
+        if self.last_update:
+
+            if datetime.now() - self.last_update < timedelta(seconds=self.interval):
+                return
+
+        zone = async_active_zone(self.hass, lat, lon)
+
+        if zone:
+
+            address = zone.name
+
+        else:
+
+            key = f"{lat},{lon}"
+
+            cached = self.cache.get(key)
+
+            if cached:
+
+                address = cached
+
+            else:
+
+                address = await reverse_lookup(self.hass, lat, lon)
+
+                if address:
+                    self.cache.set(key, address)
+
+        if not address:
+            return
+
+        self._attr_native_value = address
+
+        self.last_update = datetime.now()
+        self.last_lat = lat
+        self.last_lon = lon
+
+        self.async_write_ha_state()
+
+
+    def _distance(self, lat1, lon1, lat2, lon2):
+
+        r = 6371000
+
+        dlat = radians(lat2 - lat1)
+        dlon = radians(lon2 - lon1)
+
+        a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+
+        c = 2 * asin(sqrt(a))
+
         return r * c
