@@ -132,7 +132,7 @@ def _entry_setting(entry, key: str, default: Any) -> Any:
 class PersonAddressConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle config flow for Person Address Sensor."""
 
-    VERSION = 3
+    VERSION = 4
 
     async def async_step_user(self, user_input=None):
         """Handle the initial setup flow."""
@@ -217,14 +217,11 @@ class PersonAddressConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry):
         """Return the options flow."""
-        return PersonAddressOptionsFlow(config_entry)
+        return PersonAddressOptionsFlow()
 
 
 class PersonAddressOptionsFlow(config_entries.OptionsFlow):
     """Handle options for Person Address Sensor."""
-
-    def __init__(self, config_entry):
-        self.config_entry = config_entry
 
     async def async_step_init(self, user_input=None):
         """Manage the options."""

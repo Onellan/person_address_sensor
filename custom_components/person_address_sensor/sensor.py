@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from math import asin, cos, radians, sin, sqrt
 from typing import Any
 
@@ -8,8 +9,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_LATITUDE, ATTR_LONGITUDE
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
     CONF_DISTANCE_THRESHOLD,
@@ -25,6 +26,8 @@ from .const import (
 )
 from .geocoder import async_reverse_lookup
 
+_LOGGER = logging.getLogger(__name__)
+
 
 def _entry_setting(entry: ConfigEntry, key: str, default: Any) -> Any:
     """Read a setting from options first, then fall back to data."""
@@ -36,7 +39,7 @@ def _entry_setting(entry: ConfigEntry, key: str, default: Any) -> Any:
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
-    async_add_entities,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensor entities from a config entry."""
     cache = hass.data[DOMAIN][entry.entry_id]["cache"]
@@ -53,12 +56,7 @@ class PersonAddressSensor(SensorEntity):
     _attr_has_entity_name = True
     _attr_name = None
 
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        entry: ConfigEntry,
-        cache,
-    ) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, cache) -> None:
         self.hass = hass
         self.entry = entry
         self.cache = cache
@@ -94,7 +92,6 @@ class PersonAddressSensor(SensorEntity):
             name=f"{self._person_name} Address Sensor",
             manufacturer="Onellan",
             model="Person Address Sensor",
-            configuration_url="homeassistant://config/integrations/integration/person_address_sensor",
         )
 
     async def async_added_to_hass(self) -> None:
@@ -124,8 +121,13 @@ class PersonAddressSensor(SensorEntity):
         """Force an immediate refresh from current coordinates."""
         state = self.hass.states.get(self.person_entity_id)
         if state is None:
+            _LOGGER.warning(
+                "Force refresh skipped for %s: person state not found",
+                self.person_entity_id,
+            )
             return
 
+        _LOGGER.debug("Force refresh requested for %s", self.person_entity_id)
         await self._async_process_state(state, force=True)
 
     async def _async_process_state(self, state, force: bool = False) -> None:
@@ -140,6 +142,9 @@ class PersonAddressSensor(SensorEntity):
                 "status": "no_coordinates",
             }
             self.async_write_ha_state()
+            _LOGGER.warning(
+                "No coordinates available for %s", self.person_entity_id
+            )
             return
 
         now_ts = self.hass.loop.time()
@@ -147,6 +152,12 @@ class PersonAddressSensor(SensorEntity):
         if not force and self._last_lat is not None and self._last_lon is not None:
             distance = _distance_meters(self._last_lat, self._last_lon, lat, lon)
             if distance < self.distance_threshold:
+                _LOGGER.debug(
+                    "Skipping update for %s: moved %.2f m, threshold is %s m",
+                    self.person_entity_id,
+                    distance,
+                    self.distance_threshold,
+                )
                 return
 
         if (
@@ -154,6 +165,10 @@ class PersonAddressSensor(SensorEntity):
             and self._last_update_ts is not None
             and (now_ts - self._last_update_ts) < self.interval
         ):
+            _LOGGER.debug(
+                "Skipping update for %s: interval not reached",
+                self.person_entity_id,
+            )
             return
 
         zone_name = None
@@ -165,13 +180,29 @@ class PersonAddressSensor(SensorEntity):
                 "zone": zone_name,
                 "full_address": zone_name,
             }
+            _LOGGER.debug(
+                "Using zone '%s' for %s", zone_name, self.person_entity_id
+            )
         else:
             cache_key = f"{round(lat, 6)},{round(lon, 6)}"
             address_data = {} if force else (await self.cache.async_get(cache_key) or {})
 
+            if address_data:
+                _LOGGER.debug("Using cached address for %s", self.person_entity_id)
+
             if not address_data:
+                _LOGGER.debug(
+                    "Reverse geocoding %s at lat=%s lon=%s",
+                    self.person_entity_id,
+                    lat,
+                    lon,
+                )
                 looked_up = await async_reverse_lookup(self.hass, lat, lon)
                 if looked_up is None:
+                    _LOGGER.warning(
+                        "Reverse geocoding returned no result for %s",
+                        self.person_entity_id,
+                    )
                     return
                 address_data = looked_up
                 await self.cache.async_set(cache_key, address_data)
@@ -194,6 +225,11 @@ class PersonAddressSensor(SensorEntity):
         self._last_update_ts = now_ts
 
         self.async_write_ha_state()
+        _LOGGER.debug(
+            "Updated %s address sensor to '%s'",
+            self.person_entity_id,
+            self._attr_native_value,
+        )
 
     def _resolve_person_name(self) -> str:
         """Resolve person display name."""
