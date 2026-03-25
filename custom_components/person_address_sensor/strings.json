@@ -1,21 +1,33 @@
 {
-  "title": "Person Address Sensor",
   "config": {
-    "abort": {
-      "already_configured": "That person is already configured."
-    },
     "step": {
       "user": {
-        "title": "Set up person address sensor",
-        "description": "Choose the person and how the address should be formatted."
+        "title": "Select Person",
+        "description": "Choose the person to track for address updates.",
+        "data": {
+          "person_entity_id": "Person"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Person",
+        "description": "Change which person this sensor tracks.",
+        "data": {
+          "person_entity_id": "Person"
+        }
       }
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Edit person address sensor",
-        "description": "Update the selected fields and behavior."
+        "title": "Sensor Settings",
+        "description": "Configure how the address sensor behaves.",
+        "data": {
+          "fields": "Address fields",
+          "interval": "Update interval (seconds)",
+          "distance_threshold": "Minimum movement (meters)",
+          "prefer_zone": "Prefer zone name over reverse geocoding"
+        }
       }
     }
   }

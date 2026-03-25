@@ -1,174 +1,157 @@
 from __future__ import annotations
 
-from typing import Any
-
 import voluptuous as vol
+
 from homeassistant import config_entries
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_NAME
 from homeassistant.core import callback
-from homeassistant.helpers.selector import (
-    BooleanSelector,
-    EntitySelector,
-    EntitySelectorConfig,
-    NumberSelector,
-    NumberSelectorConfig,
-    SelectSelector,
-    SelectSelectorConfig,
-)
+import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers.selector import selector
 
 from .const import (
-    CONF_DISTANCE_THRESHOLD,
+    DOMAIN,
+    CONF_PERSON_ENTITY_ID,
     CONF_FIELDS,
     CONF_INTERVAL,
-    CONF_PERSON_ENTITY_ID,
+    CONF_DISTANCE_THRESHOLD,
     CONF_PREFER_ZONE,
-    DEFAULT_DISTANCE_THRESHOLD,
     DEFAULT_FIELDS,
     DEFAULT_INTERVAL,
+    DEFAULT_DISTANCE_THRESHOLD,
     DEFAULT_PREFER_ZONE,
-    DOMAIN,
-    FIELD_OPTIONS,
 )
 
 
-def _build_schema(
-    *,
-    person_default: str | None = None,
-    fields_default: list[str] | None = None,
-    interval_default: int = DEFAULT_INTERVAL,
-    distance_default: int = DEFAULT_DISTANCE_THRESHOLD,
-    prefer_zone_default: bool = DEFAULT_PREFER_ZONE,
-    include_person: bool = True,
-) -> vol.Schema:
-    schema: dict[Any, Any] = {}
+def _person_selector(hass):
+    persons = [
+        entity.entity_id
+        for entity in hass.states.async_all("person")
+    ]
 
-    if include_person:
-        schema[
-            vol.Required(
-                CONF_PERSON_ENTITY_ID,
-                default=person_default,
-            )
-        ] = EntitySelector(EntitySelectorConfig(domain="person"))
-
-    schema[
-        vol.Required(
-            CONF_FIELDS,
-            default=fields_default or DEFAULT_FIELDS,
-        )
-    ] = SelectSelector(
-        SelectSelectorConfig(
-            options=FIELD_OPTIONS,
-            multiple=True,
-            mode="dropdown",
-        )
+    return selector(
+        {
+            "select": {
+                "options": persons,
+                "mode": "dropdown",
+            }
+        }
     )
 
-    schema[
-        vol.Required(
-            CONF_INTERVAL,
-            default=interval_default,
-        )
-    ] = NumberSelector(
-        NumberSelectorConfig(
-            min=60,
-            max=86400,
-            step=60,
-            mode="box",
-        )
-    )
 
-    schema[
-        vol.Required(
-            CONF_DISTANCE_THRESHOLD,
-            default=distance_default,
-        )
-    ] = NumberSelector(
-        NumberSelectorConfig(
-            min=0,
-            max=5000,
-            step=5,
-            mode="box",
-        )
-    )
-
-    schema[
-        vol.Required(
-            CONF_PREFER_ZONE,
-            default=prefer_zone_default,
-        )
-    ] = BooleanSelector()
-
-    return vol.Schema(schema)
-
-
-class PersonAddressSensorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Config flow for Person Address Sensor."""
-
+class PersonAddressConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
-    async def async_step_user(self, user_input: dict[str, Any] | None = None):
+    def __init__(self):
+        self._data = {}
+
+    async def async_step_user(self, user_input=None):
         if user_input is not None:
-            person_entity_id = user_input[CONF_PERSON_ENTITY_ID]
-            await self.async_set_unique_id(person_entity_id)
-            self._abort_if_unique_id_configured()
-
-            state = self.hass.states.get(person_entity_id)
-            title = state.name if state else person_entity_id
-
             return self.async_create_entry(
-                title=title,
+                title=user_input[CONF_PERSON_ENTITY_ID],
                 data={
-                    CONF_PERSON_ENTITY_ID: person_entity_id,
-                },
-                options={
-                    CONF_FIELDS: user_input[CONF_FIELDS],
-                    CONF_INTERVAL: int(user_input[CONF_INTERVAL]),
-                    CONF_DISTANCE_THRESHOLD: int(user_input[CONF_DISTANCE_THRESHOLD]),
-                    CONF_PREFER_ZONE: bool(user_input[CONF_PREFER_ZONE]),
+                    CONF_PERSON_ENTITY_ID: user_input[CONF_PERSON_ENTITY_ID],
                 },
             )
 
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_PERSON_ENTITY_ID): _person_selector(self.hass),
+            }
+        )
+
+        return self.async_show_form(step_id="user", data_schema=schema)
+
+    # ✅ NEW: Proper reconfigure flow
+    async def async_step_reconfigure(self, user_input=None):
+        entry = self._get_reconfigure_entry()
+
+        if user_input is not None:
+            return self.async_update_reload_and_abort(
+                entry,
+                data_updates={
+                    CONF_PERSON_ENTITY_ID: user_input[CONF_PERSON_ENTITY_ID],
+                },
+            )
+
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_PERSON_ENTITY_ID,
+                    default=entry.data.get(CONF_PERSON_ENTITY_ID),
+                ): _person_selector(self.hass),
+            }
+        )
+
         return self.async_show_form(
-            step_id="user",
-            data_schema=_build_schema(),
+            step_id="reconfigure",
+            data_schema=schema,
         )
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry: ConfigEntry):
-        return PersonAddressSensorOptionsFlow()
+    def async_get_options_flow(config_entry):
+        return PersonAddressOptionsFlow(config_entry)
 
 
-class PersonAddressSensorOptionsFlow(config_entries.OptionsFlow):
-    """Options flow for Person Address Sensor."""
+class PersonAddressOptionsFlow(config_entries.OptionsFlow):
+    def __init__(self, config_entry):
+        self.config_entry = config_entry
 
-    async def async_step_init(self, user_input: dict[str, Any] | None = None):
+    async def async_step_init(self, user_input=None):
         if user_input is not None:
-            return self.async_create_entry(
-                title="",
-                data={
-                    CONF_FIELDS: user_input[CONF_FIELDS],
-                    CONF_INTERVAL: int(user_input[CONF_INTERVAL]),
-                    CONF_DISTANCE_THRESHOLD: int(user_input[CONF_DISTANCE_THRESHOLD]),
-                    CONF_PREFER_ZONE: bool(user_input[CONF_PREFER_ZONE]),
-                },
-            )
+            return self.async_create_entry(title="", data=user_input)
 
-        current_options = self.config_entry.options
-        current_data = self.config_entry.data
+        options = self.config_entry.options
 
-        return self.async_show_form(
-            step_id="init",
-            data_schema=_build_schema(
-                person_default=current_data.get(CONF_PERSON_ENTITY_ID),
-                fields_default=current_options.get(CONF_FIELDS, DEFAULT_FIELDS),
-                interval_default=current_options.get(CONF_INTERVAL, DEFAULT_INTERVAL),
-                distance_default=current_options.get(
-                    CONF_DISTANCE_THRESHOLD, DEFAULT_DISTANCE_THRESHOLD
+        schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_FIELDS,
+                    default=options.get(CONF_FIELDS, DEFAULT_FIELDS),
+                ): cv.multi_select(
+                    {
+                        "street": "Street",
+                        "suburb": "Suburb",
+                        "city": "City",
+                        "province": "Province",
+                        "country": "Country",
+                    }
                 ),
-                prefer_zone_default=current_options.get(
-                    CONF_PREFER_ZONE, DEFAULT_PREFER_ZONE
+                vol.Optional(
+                    CONF_INTERVAL,
+                    default=options.get(CONF_INTERVAL, DEFAULT_INTERVAL),
+                ): selector(
+                    {
+                        "number": {
+                            "min": 10,
+                            "max": 3600,
+                            "unit_of_measurement": "seconds",
+                        }
+                    }
                 ),
-                include_person=False,
-            ),
+                vol.Optional(
+                    CONF_DISTANCE_THRESHOLD,
+                    default=options.get(
+                        CONF_DISTANCE_THRESHOLD, DEFAULT_DISTANCE_THRESHOLD
+                    ),
+                ): selector(
+                    {
+                        "number": {
+                            "min": 0,
+                            "max": 500,
+                            "unit_of_measurement": "meters",
+                        }
+                    }
+                ),
+                vol.Optional(
+                    CONF_PREFER_ZONE,
+                    default=options.get(
+                        CONF_PREFER_ZONE, DEFAULT_PREFER_ZONE
+                    ),
+                ): selector(
+                    {"boolean": {}}
+                ),
+            }
         )
+
+        return self.async_show_form(step_id="init", data_schema=schema)

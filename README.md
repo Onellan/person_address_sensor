@@ -30,3 +30,23 @@ Depending on your selected fields:
 - `Oxford Road, Rosebank, Johannesburg, Gauteng, South Africa`
 - `Home`
 - `Johannesburg, Gauteng`
+
+## Configuration
+
+After adding the integration:
+
+### Change tracked person
+Go to:
+Settings → Devices & Services → Person Address Sensor → Configure
+
+This uses the **Reconfigure flow** to change the selected person.
+
+### Change sensor behaviour
+Use:
+Options
+
+You can configure:
+- Address fields
+- Update interval
+- Distance threshold
+- Zone preference
