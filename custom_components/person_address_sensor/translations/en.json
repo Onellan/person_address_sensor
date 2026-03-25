@@ -24,7 +24,6 @@
         "title": "Edit person address sensor",
         "description": "Update the selected fields and behavior.",
         "data": {
-          "person_entity_id": "Person",
           "fields": "Fields to show",
           "interval": "Minimum update interval (seconds)",
           "distance_threshold": "Minimum movement before update (meters)",

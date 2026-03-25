@@ -7,11 +7,11 @@ from typing import Any
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.event import async_track_state_change_event
 
 from .cache import AddressCache
 from .const import (
+    CACHE_FILE,
     CONF_DISTANCE_THRESHOLD,
     CONF_FIELDS,
     CONF_INTERVAL,
@@ -21,8 +21,6 @@ from .const import (
     DEFAULT_FIELDS,
     DEFAULT_INTERVAL,
     DEFAULT_PREFER_ZONE,
-    DOMAIN,
-    CACHE_FILE,
 )
 from .geocoder import async_reverse_lookup
 
@@ -36,12 +34,7 @@ async def async_setup_entry(
     cache = AddressCache(hass, Path(hass.config.path(CACHE_FILE)))
     await cache.async_load()
 
-    async_add_entities(
-        [
-            PersonAddressSensor(hass, entry, cache),
-        ],
-        True,
-    )
+    async_add_entities([PersonAddressSensor(hass, entry, cache)], True)
 
 
 class PersonAddressSensor(SensorEntity):
@@ -171,7 +164,7 @@ class PersonAddressSensor(SensorEntity):
                 values.append(str(value))
 
         return ", ".join(values)
-        
+
 
 def _distance_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Return approximate Haversine distance in meters."""

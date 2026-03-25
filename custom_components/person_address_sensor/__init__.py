@@ -16,7 +16,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up a config entry."""
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
 
-    async def _async_reload_entry(updated_hass: HomeAssistant, updated_entry: ConfigEntry) -> None:
+    async def _async_reload_entry(
+        updated_hass: HomeAssistant, updated_entry: ConfigEntry
+    ) -> None:
         await updated_hass.config_entries.async_reload(updated_entry.entry_id)
 
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))

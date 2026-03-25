@@ -18,8 +18,8 @@ CACHE_TTL_SECONDS = 86400
 
 FIELD_OPTIONS: list[str] = [
     "full_address",
-    "road",
     "house_number",
+    "road",
     "suburb",
     "neighbourhood",
     "city",

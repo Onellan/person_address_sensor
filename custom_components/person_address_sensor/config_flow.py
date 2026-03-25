@@ -38,53 +38,67 @@ def _build_schema(
     interval_default: int = DEFAULT_INTERVAL,
     distance_default: int = DEFAULT_DISTANCE_THRESHOLD,
     prefer_zone_default: bool = DEFAULT_PREFER_ZONE,
+    include_person: bool = True,
 ) -> vol.Schema:
-    return vol.Schema(
-        {
+    schema: dict[Any, Any] = {}
+
+    if include_person:
+        schema[
             vol.Required(
                 CONF_PERSON_ENTITY_ID,
                 default=person_default,
-            ): EntitySelector(
-                EntitySelectorConfig(domain="person")
-            ),
-            vol.Required(
-                CONF_FIELDS,
-                default=fields_default or DEFAULT_FIELDS,
-            ): SelectSelector(
-                SelectSelectorConfig(
-                    options=FIELD_OPTIONS,
-                    multiple=True,
-                    mode="dropdown",
-                )
-            ),
-            vol.Required(
-                CONF_INTERVAL,
-                default=interval_default,
-            ): NumberSelector(
-                NumberSelectorConfig(
-                    min=60,
-                    max=86400,
-                    step=60,
-                    mode="box",
-                )
-            ),
-            vol.Required(
-                CONF_DISTANCE_THRESHOLD,
-                default=distance_default,
-            ): NumberSelector(
-                NumberSelectorConfig(
-                    min=0,
-                    max=5000,
-                    step=5,
-                    mode="box",
-                )
-            ),
-            vol.Required(
-                CONF_PREFER_ZONE,
-                default=prefer_zone_default,
-            ): BooleanSelector(),
-        }
+            )
+        ] = EntitySelector(EntitySelectorConfig(domain="person"))
+
+    schema[
+        vol.Required(
+            CONF_FIELDS,
+            default=fields_default or DEFAULT_FIELDS,
+        )
+    ] = SelectSelector(
+        SelectSelectorConfig(
+            options=FIELD_OPTIONS,
+            multiple=True,
+            mode="dropdown",
+        )
     )
+
+    schema[
+        vol.Required(
+            CONF_INTERVAL,
+            default=interval_default,
+        )
+    ] = NumberSelector(
+        NumberSelectorConfig(
+            min=60,
+            max=86400,
+            step=60,
+            mode="box",
+        )
+    )
+
+    schema[
+        vol.Required(
+            CONF_DISTANCE_THRESHOLD,
+            default=distance_default,
+        )
+    ] = NumberSelector(
+        NumberSelectorConfig(
+            min=0,
+            max=5000,
+            step=5,
+            mode="box",
+        )
+    )
+
+    schema[
+        vol.Required(
+            CONF_PREFER_ZONE,
+            default=prefer_zone_default,
+        )
+    ] = BooleanSelector()
+
+    return vol.Schema(schema)
 
 
 class PersonAddressSensorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -98,8 +112,11 @@ class PersonAddressSensorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(person_entity_id)
             self._abort_if_unique_id_configured()
 
+            state = self.hass.states.get(person_entity_id)
+            title = state.name if state else person_entity_id
+
             return self.async_create_entry(
-                title=self.hass.states.get(person_entity_id).name if self.hass.states.get(person_entity_id) else person_entity_id,
+                title=title,
                 data={
                     CONF_PERSON_ENTITY_ID: person_entity_id,
                 },
@@ -146,7 +163,12 @@ class PersonAddressSensorOptionsFlow(config_entries.OptionsFlow):
                 person_default=current_data.get(CONF_PERSON_ENTITY_ID),
                 fields_default=current_options.get(CONF_FIELDS, DEFAULT_FIELDS),
                 interval_default=current_options.get(CONF_INTERVAL, DEFAULT_INTERVAL),
-                distance_default=current_options.get(CONF_DISTANCE_THRESHOLD, DEFAULT_DISTANCE_THRESHOLD),
-                prefer_zone_default=current_options.get(CONF_PREFER_ZONE, DEFAULT_PREFER_ZONE),
+                distance_default=current_options.get(
+                    CONF_DISTANCE_THRESHOLD, DEFAULT_DISTANCE_THRESHOLD
+                ),
+                prefer_zone_default=current_options.get(
+                    CONF_PREFER_ZONE, DEFAULT_PREFER_ZONE
+                ),
+                include_person=False,
             ),
         )
