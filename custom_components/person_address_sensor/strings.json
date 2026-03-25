@@ -1,3 +1,22 @@
 {
-  "title": "Person Address Sensor"
+  "title": "Person Address Sensor",
+  "config": {
+    "abort": {
+      "already_configured": "That person is already configured."
+    },
+    "step": {
+      "user": {
+        "title": "Set up person address sensor",
+        "description": "Choose the person and how the address should be formatted."
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Edit person address sensor",
+        "description": "Update the selected fields and behavior."
+      }
+    }
+  }
 }

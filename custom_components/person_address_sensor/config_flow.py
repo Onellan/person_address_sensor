@@ -1,38 +1,152 @@
-"""Config flow for Person Address Sensor."""
+from __future__ import annotations
+
+from typing import Any
+
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import callback
-from .const import DOMAIN
+from homeassistant.helpers.selector import (
+    BooleanSelector,
+    EntitySelector,
+    EntitySelectorConfig,
+    NumberSelector,
+    NumberSelectorConfig,
+    SelectSelector,
+    SelectSelectorConfig,
+)
 
-DEFAULT_FIELDS = ["address", "city", "country", "state", "zip"]
+from .const import (
+    CONF_DISTANCE_THRESHOLD,
+    CONF_FIELDS,
+    CONF_INTERVAL,
+    CONF_PERSON_ENTITY_ID,
+    CONF_PREFER_ZONE,
+    DEFAULT_DISTANCE_THRESHOLD,
+    DEFAULT_FIELDS,
+    DEFAULT_INTERVAL,
+    DEFAULT_PREFER_ZONE,
+    DOMAIN,
+    FIELD_OPTIONS,
+)
 
 
-class PersonAddressConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow."""
+def _build_schema(
+    *,
+    person_default: str | None = None,
+    fields_default: list[str] | None = None,
+    interval_default: int = DEFAULT_INTERVAL,
+    distance_default: int = DEFAULT_DISTANCE_THRESHOLD,
+    prefer_zone_default: bool = DEFAULT_PREFER_ZONE,
+) -> vol.Schema:
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_PERSON_ENTITY_ID,
+                default=person_default,
+            ): EntitySelector(
+                EntitySelectorConfig(domain="person")
+            ),
+            vol.Required(
+                CONF_FIELDS,
+                default=fields_default or DEFAULT_FIELDS,
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=FIELD_OPTIONS,
+                    multiple=True,
+                    mode="dropdown",
+                )
+            ),
+            vol.Required(
+                CONF_INTERVAL,
+                default=interval_default,
+            ): NumberSelector(
+                NumberSelectorConfig(
+                    min=60,
+                    max=86400,
+                    step=60,
+                    mode="box",
+                )
+            ),
+            vol.Required(
+                CONF_DISTANCE_THRESHOLD,
+                default=distance_default,
+            ): NumberSelector(
+                NumberSelectorConfig(
+                    min=0,
+                    max=5000,
+                    step=5,
+                    mode="box",
+                )
+            ),
+            vol.Required(
+                CONF_PREFER_ZONE,
+                default=prefer_zone_default,
+            ): BooleanSelector(),
+        }
+    )
+
+
+class PersonAddressSensorConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Config flow for Person Address Sensor."""
 
     VERSION = 1
 
-    async def async_step_user(self, user_input=None):
-        """Initial step: select person entity and fields."""
-        # Get all person entities for dropdown
-        persons = [
-            entity.entity_id
-            for entity in self.hass.states.async_all("person")
-        ]
-
+    async def async_step_user(self, user_input: dict[str, Any] | None = None):
         if user_input is not None:
+            person_entity_id = user_input[CONF_PERSON_ENTITY_ID]
+            await self.async_set_unique_id(person_entity_id)
+            self._abort_if_unique_id_configured()
+
             return self.async_create_entry(
-                title=user_input["person_entity_id"],
-                data={"person_entity_id": user_input["person_entity_id"]},
-                options={"fields": user_input.get("fields", DEFAULT_FIELDS)},
+                title=self.hass.states.get(person_entity_id).name if self.hass.states.get(person_entity_id) else person_entity_id,
+                data={
+                    CONF_PERSON_ENTITY_ID: person_entity_id,
+                },
+                options={
+                    CONF_FIELDS: user_input[CONF_FIELDS],
+                    CONF_INTERVAL: int(user_input[CONF_INTERVAL]),
+                    CONF_DISTANCE_THRESHOLD: int(user_input[CONF_DISTANCE_THRESHOLD]),
+                    CONF_PREFER_ZONE: bool(user_input[CONF_PREFER_ZONE]),
+                },
             )
 
-        schema = vol.Schema(
-            {
-                vol.Required("person_entity_id"): vol.In(persons),
-                vol.Optional("fields", default=DEFAULT_FIELDS): vol.MultiSelect(
-                    DEFAULT_FIELDS
-                ),
-            }
+        return self.async_show_form(
+            step_id="user",
+            data_schema=_build_schema(),
         )
-        return self.async_show_form(step_id="user", data_schema=schema)
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry):
+        return PersonAddressSensorOptionsFlow()
+
+
+class PersonAddressSensorOptionsFlow(config_entries.OptionsFlow):
+    """Options flow for Person Address Sensor."""
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None):
+        if user_input is not None:
+            return self.async_create_entry(
+                title="",
+                data={
+                    CONF_FIELDS: user_input[CONF_FIELDS],
+                    CONF_INTERVAL: int(user_input[CONF_INTERVAL]),
+                    CONF_DISTANCE_THRESHOLD: int(user_input[CONF_DISTANCE_THRESHOLD]),
+                    CONF_PREFER_ZONE: bool(user_input[CONF_PREFER_ZONE]),
+                },
+            )
+
+        current_options = self.config_entry.options
+        current_data = self.config_entry.data
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=_build_schema(
+                person_default=current_data.get(CONF_PERSON_ENTITY_ID),
+                fields_default=current_options.get(CONF_FIELDS, DEFAULT_FIELDS),
+                interval_default=current_options.get(CONF_INTERVAL, DEFAULT_INTERVAL),
+                distance_default=current_options.get(CONF_DISTANCE_THRESHOLD, DEFAULT_DISTANCE_THRESHOLD),
+                prefer_zone_default=current_options.get(CONF_PREFER_ZONE, DEFAULT_PREFER_ZONE),
+            ),
+        )

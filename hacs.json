@@ -1,6 +1,8 @@
 {
-  "name": "Person Address Sensor Pro",
+  "name": "Person Address Sensor",
   "content_in_root": false,
   "domains": ["person_address_sensor"],
-  "homeassistant": "2026.3.0"
+  "homeassistant": "2026.3.0",
+  "filename": "custom_components/person_address_sensor/manifest.json",
+  "render_readme": true
 }

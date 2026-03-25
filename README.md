@@ -1,23 +1,32 @@
-# Person Address Sensor Pro
+# Person Address Sensor
 
-Upstream‑quality Home Assistant integration with GPS jitter filtering and movement distance threshold support.
+A Home Assistant custom integration that creates one combined address sensor for a selected `person` entity.
 
 ## Features
 
-- Movement triggered updates
-- Persistent cache
-- Zone fallback
-- YAML configuration
-- Template formatting
-- Device tracker fallback
-- Address component parsing ready
+- Select a person from a dropdown
+- Select which address fields to show
+- One combined sensor with comma-separated fields
+- Immediate population from the person's current location
+- Country-aware reverse geocoding
+- Optional Home Assistant zone fallback
+- Minimum update interval
+- Minimum movement threshold
+- Editable later through the integration options
 
-## YAML Example
+## Installation with HACS
 
-person_address_sensor:
+1. Push this repository to GitHub
+2. In HACS, add it as a **Custom repository**
+3. Category: **Integration**
+4. Install **Person Address Sensor**
+5. Restart Home Assistant
+6. Add the integration from **Settings > Devices & Services**
 
-  persons:
+## Example output
 
-    - person: person.onellan
-      interval: 300
-      format_template: "📍 {address}"
+Depending on your selected fields:
+
+- `Oxford Road, Rosebank, Johannesburg, Gauteng, South Africa`
+- `Home`
+- `Johannesburg, Gauteng`
