@@ -1,0 +1,6 @@
+{
+  "name": "Person Address Sensor Pro",
+  "content_in_root": false,
+  "domains": ["person_address_sensor"],
+  "homeassistant": "2023.8.0"
+}
