@@ -1,13 +1,14 @@
 {
   "title": "Person Address Sensor",
   "config": {
-    "abort": {
-      "already_configured": "That person is already configured."
+    "initiate_flow": {
+      "user": "Add person address sensor",
+      "reconfigure": "Change tracked person"
     },
     "step": {
       "user": {
         "title": "Set up person address sensor",
-        "description": "Choose the person and how the address should be formatted.",
+        "description": "Choose the person and how the address sensor should behave.",
         "data": {
           "person_entity_id": "Person",
           "fields": "Fields to show",
@@ -15,14 +16,24 @@
           "distance_threshold": "Minimum movement before update (meters)",
           "prefer_zone": "Use Home Assistant zone name when available"
         }
+      },
+      "reconfigure": {
+        "title": "Change tracked person",
+        "description": "Select a different person for this sensor entry.",
+        "data": {
+          "person_entity_id": "Person"
+        }
       }
+    },
+    "abort": {
+      "reconfigure_successful": "Tracked person updated successfully."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Edit person address sensor",
-        "description": "Update the selected fields and behavior.",
+        "description": "Update the selected fields and behaviour.",
         "data": {
           "fields": "Fields to show",
           "interval": "Minimum update interval (seconds)",

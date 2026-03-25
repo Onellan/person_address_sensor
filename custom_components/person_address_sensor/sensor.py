@@ -25,6 +25,13 @@ from .const import (
 from .geocoder import async_reverse_lookup
 
 
+def _entry_setting(entry: ConfigEntry, key: str, default: Any) -> Any:
+    """Read a setting from options first, then fall back to data."""
+    if key in entry.options:
+        return entry.options[key]
+    return entry.data.get(key, default)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -43,18 +50,31 @@ class PersonAddressSensor(SensorEntity):
     _attr_should_poll = False
     _attr_icon = "mdi:map-marker"
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, cache: AddressCache) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        cache: AddressCache,
+    ) -> None:
         self.hass = hass
         self.entry = entry
         self.cache = cache
 
         self.person_entity_id: str = entry.data[CONF_PERSON_ENTITY_ID]
-        self.fields: list[str] = entry.options.get(CONF_FIELDS, DEFAULT_FIELDS)
-        self.interval: int = int(entry.options.get(CONF_INTERVAL, DEFAULT_INTERVAL))
-        self.distance_threshold: int = int(
-            entry.options.get(CONF_DISTANCE_THRESHOLD, DEFAULT_DISTANCE_THRESHOLD)
+        self.fields: list[str] = list(
+            _entry_setting(entry, CONF_FIELDS, DEFAULT_FIELDS)
         )
-        self.prefer_zone: bool = bool(entry.options.get(CONF_PREFER_ZONE, DEFAULT_PREFER_ZONE))
+        self.interval: int = int(
+            _entry_setting(entry, CONF_INTERVAL, DEFAULT_INTERVAL)
+        )
+        self.distance_threshold: int = int(
+            _entry_setting(
+                entry, CONF_DISTANCE_THRESHOLD, DEFAULT_DISTANCE_THRESHOLD
+            )
+        )
+        self.prefer_zone: bool = bool(
+            _entry_setting(entry, CONF_PREFER_ZONE, DEFAULT_PREFER_ZONE)
+        )
 
         state = hass.states.get(self.person_entity_id)
         person_name = state.name if state else self.person_entity_id
@@ -112,7 +132,10 @@ class PersonAddressSensor(SensorEntity):
             if distance < self.distance_threshold:
                 return
 
-        if self._last_update_ts is not None and (now_ts - self._last_update_ts) < self.interval:
+        if (
+            self._last_update_ts is not None
+            and (now_ts - self._last_update_ts) < self.interval
+        ):
             return
 
         zone_name = None

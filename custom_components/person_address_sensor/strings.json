@@ -1,32 +1,44 @@
 {
+  "title": "Person Address Sensor",
   "config": {
+    "initiate_flow": {
+      "user": "Add person address sensor",
+      "reconfigure": "Change tracked person"
+    },
     "step": {
       "user": {
-        "title": "Select Person",
-        "description": "Choose the person to track for address updates.",
+        "title": "Set up person address sensor",
+        "description": "Choose the person and how the address sensor should behave.",
         "data": {
-          "person_entity_id": "Person"
+          "person_entity_id": "Person",
+          "fields": "Fields to show",
+          "interval": "Minimum update interval (seconds)",
+          "distance_threshold": "Minimum movement before update (meters)",
+          "prefer_zone": "Use Home Assistant zone name when available"
         }
       },
       "reconfigure": {
-        "title": "Reconfigure Person",
-        "description": "Change which person this sensor tracks.",
+        "title": "Change tracked person",
+        "description": "Select a different person for this sensor entry.",
         "data": {
           "person_entity_id": "Person"
         }
       }
+    },
+    "abort": {
+      "reconfigure_successful": "Tracked person updated successfully."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Sensor Settings",
-        "description": "Configure how the address sensor behaves.",
+        "title": "Edit person address sensor",
+        "description": "Update the selected fields and behaviour.",
         "data": {
-          "fields": "Address fields",
-          "interval": "Update interval (seconds)",
-          "distance_threshold": "Minimum movement (meters)",
-          "prefer_zone": "Prefer zone name over reverse geocoding"
+          "fields": "Fields to show",
+          "interval": "Minimum update interval (seconds)",
+          "distance_threshold": "Minimum movement before update (meters)",
+          "prefer_zone": "Use Home Assistant zone name when available"
         }
       }
     }
