@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from math import radians, cos, sin, asin, sqrt
 from pathlib import Path
 
-from homeassistant.helpers.entity import SensorEntity
+from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.components.zone import async_active_zone
 
