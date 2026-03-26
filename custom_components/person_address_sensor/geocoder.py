@@ -25,7 +25,7 @@ async def async_reverse_lookup(
         "accept-language": "en",
     }
     headers = {
-        "User-Agent": "HomeAssistantPersonAddressSensor/6.0.1",
+        "User-Agent": "HomeAssistantPersonAddressSensor/6.1.0",
     }
 
     try:

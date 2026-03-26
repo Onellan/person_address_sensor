@@ -9,6 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_LATITUDE, ATTR_LONGITUDE
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 
@@ -68,7 +69,7 @@ class PersonAddressMetricSensor(SensorEntity):
 
     _attr_should_poll = False
     _attr_has_entity_name = True
-    _attr_entity_category = "diagnostic"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:chart-line"
 
     def __init__(self, parent: "PersonAddressSensor", metric_key: str) -> None:
@@ -79,18 +80,25 @@ class PersonAddressMetricSensor(SensorEntity):
 
     @property
     def available(self) -> bool:
+        """Return whether the sensor is available."""
         return self._parent.available
 
     @property
     def native_value(self) -> int:
+        """Return the current metric value."""
         return int(self._parent.stats.get(self._metric_key, 0))
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        """Return diagnostic attributes."""
         total = self._parent.stats.get("api_calls", 0) + self._parent.stats.get(
             "cache_hits", 0
         )
-        hit_rate = round((self._parent.stats.get("cache_hits", 0) / total) * 100, 2) if total else 0.0
+        hit_rate = (
+            round((self._parent.stats.get("cache_hits", 0) / total) * 100, 2)
+            if total
+            else 0.0
+        )
         return {
             "person_entity_id": self._parent.person_entity_id,
             "person_name": self._parent.person_name,
@@ -102,6 +110,7 @@ class PersonAddressMetricSensor(SensorEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
+        """Return device info for grouping under the same device."""
         return self._parent.device_info
 
 
@@ -119,15 +128,11 @@ class PersonAddressSensor(SensorEntity):
         self.stats_store = stats_store
 
         self.person_entity_id: str = entry.data[CONF_PERSON_ENTITY_ID]
-        self.fields: list[str] = list(
-            _entry_setting(entry, CONF_FIELDS, DEFAULT_FIELDS)
-        )
+        self.fields: list[str] = list(_entry_setting(entry, CONF_FIELDS, DEFAULT_FIELDS))
         self.update_rules: list[str] = list(
             _entry_setting(entry, CONF_UPDATE_RULES, DEFAULT_UPDATE_RULES)
         )
-        self.interval: int = int(
-            _entry_setting(entry, CONF_INTERVAL, DEFAULT_INTERVAL)
-        )
+        self.interval: int = int(_entry_setting(entry, CONF_INTERVAL, DEFAULT_INTERVAL))
         self.distance_threshold: int = int(
             _entry_setting(entry, CONF_DISTANCE_THRESHOLD, DEFAULT_DISTANCE_THRESHOLD)
         )
@@ -176,8 +181,10 @@ class PersonAddressSensor(SensorEntity):
             )
         )
 
-        metric_entities = self.hass.data.get(DOMAIN, {}).get(self.entry.entry_id, {}).get(
-            "metric_sensors", []
+        metric_entities = (
+            self.hass.data.get(DOMAIN, {})
+            .get(self.entry.entry_id, {})
+            .get("metric_sensors", [])
         )
         self._metric_entities = list(metric_entities)
 
@@ -359,7 +366,11 @@ class PersonAddressSensor(SensorEntity):
             combined = address_data.get("full_address") or address_data.get("zone") or None
 
         total_requests = self.stats["api_calls"] + self.stats["cache_hits"]
-        cache_hit_rate = round((self.stats["cache_hits"] / total_requests) * 100, 2) if total_requests else 0.0
+        cache_hit_rate = (
+            round((self.stats["cache_hits"] / total_requests) * 100, 2)
+            if total_requests
+            else 0.0
+        )
 
         self._attr_available = True
         self._attr_native_value = combined
@@ -371,7 +382,9 @@ class PersonAddressSensor(SensorEntity):
             "triggered_rules": triggered_rules,
             "latitude": lat,
             "longitude": lon,
-            "distance_from_last_update_m": round(distance, 2) if distance is not None else None,
+            "distance_from_last_update_m": round(distance, 2)
+            if distance is not None
+            else None,
             "minimum_distance_threshold_m": self.distance_threshold,
             "minimum_update_interval_s": self.interval,
             "force_update_supported": True,

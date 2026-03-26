@@ -36,6 +36,7 @@ class AddressCache:
         """Save cache to disk."""
 
         def _write() -> None:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
             self.path.write_text(
                 json.dumps(self._cache, ensure_ascii=False),
                 encoding="utf-8",
@@ -65,6 +66,7 @@ class AddressCache:
         payload["_timestamp"] = time.time()
         self._cache[key] = payload
         await self.async_save()
+
 
 class PersistentStatsStore:
     """Async-safe persistent store for per-entry performance counters."""
@@ -102,6 +104,7 @@ class PersistentStatsStore:
         """Save stats to disk."""
 
         def _write() -> None:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
             self.path.write_text(
                 json.dumps(self._stats, ensure_ascii=False),
                 encoding="utf-8",
