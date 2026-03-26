@@ -80,17 +80,14 @@ class PersonAddressMetricSensor(SensorEntity):
 
     @property
     def available(self) -> bool:
-        """Return whether the sensor is available."""
         return self._parent.available
 
     @property
     def native_value(self) -> int:
-        """Return the current metric value."""
         return int(self._parent.stats.get(self._metric_key, 0))
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return diagnostic attributes."""
         total = self._parent.stats.get("api_calls", 0) + self._parent.stats.get(
             "cache_hits", 0
         )
@@ -110,7 +107,6 @@ class PersonAddressMetricSensor(SensorEntity):
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Return device info for grouping under the same device."""
         return self._parent.device_info
 
 
@@ -363,7 +359,9 @@ class PersonAddressSensor(SensorEntity):
 
         combined = self._format_selected_fields(address_data)
         if not combined:
-            combined = address_data.get("full_address") or address_data.get("zone") or None
+            combined = (
+                address_data.get("full_address") or address_data.get("zone") or None
+            )
 
         total_requests = self.stats["api_calls"] + self.stats["cache_hits"]
         cache_hit_rate = (
@@ -382,9 +380,9 @@ class PersonAddressSensor(SensorEntity):
             "triggered_rules": triggered_rules,
             "latitude": lat,
             "longitude": lon,
-            "distance_from_last_update_m": round(distance, 2)
-            if distance is not None
-            else None,
+            "distance_from_last_update_m": (
+                round(distance, 2) if distance is not None else None
+            ),
             "minimum_distance_threshold_m": self.distance_threshold,
             "minimum_update_interval_s": self.interval,
             "force_update_supported": True,
@@ -412,6 +410,8 @@ class PersonAddressSensor(SensorEntity):
     def _async_write_metric_states(self) -> None:
         """Refresh linked metric entities."""
         for entity in self._metric_entities:
+            if getattr(entity, "hass", None) is None:
+                continue
             entity.async_write_ha_state()
 
     async def _async_persist_stats(self) -> None:
