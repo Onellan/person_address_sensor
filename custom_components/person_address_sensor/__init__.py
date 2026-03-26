@@ -6,8 +6,8 @@ from pathlib import Path
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .cache import AddressCache
-from .const import CACHE_FILE, DOMAIN
+from .cache import AddressCache, PersistentStatsStore
+from .const import CACHE_FILE, DOMAIN, STATS_FILE
 
 PLATFORMS: list[str] = ["sensor", "button"]
 
@@ -20,11 +20,23 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up a config entry."""
-    cache = AddressCache(hass, Path(hass.config.path(CACHE_FILE)))
-    await cache.async_load()
+    domain_data = hass.data.setdefault(DOMAIN, {})
 
-    hass.data[DOMAIN][entry.entry_id] = {
+    cache = domain_data.get("cache")
+    if cache is None:
+        cache = AddressCache(hass, Path(hass.config.path(CACHE_FILE)))
+        await cache.async_load()
+        domain_data["cache"] = cache
+
+    stats_store = domain_data.get("stats_store")
+    if stats_store is None:
+        stats_store = PersistentStatsStore(hass, Path(hass.config.path(STATS_FILE)))
+        await stats_store.async_load()
+        domain_data["stats_store"] = stats_store
+
+    domain_data[entry.entry_id] = {
         "cache": cache,
+        "stats_store": stats_store,
         "sensor": None,
     }
 

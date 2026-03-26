@@ -44,9 +44,11 @@ class PersonAddressForceUpdateButton(ButtonEntity):
     @property
     def device_info(self) -> DeviceInfo:
         """Return device info for grouping under the same device."""
+        sensor = self._sensor
+        sensor_name = sensor.person_name if sensor is not None else self.entry.title
         return DeviceInfo(
             identifiers={(DOMAIN, self.entry.entry_id)},
-            name=f"{self.entry.title} Address Sensor",
+            name=f"{sensor_name} Address Sensor",
             manufacturer="Onellan",
             model="Person Address Sensor",
         )
@@ -61,5 +63,5 @@ class PersonAddressForceUpdateButton(ButtonEntity):
             )
             return
 
-        _LOGGER.warning("Force update button pressed for %s", self.entry.title)
+        _LOGGER.warning("Force update button pressed for %s", sensor.person_name)
         await sensor.async_force_refresh()

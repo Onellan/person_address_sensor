@@ -1,4 +1,3 @@
-# sensor.py
 from __future__ import annotations
 
 import logging
@@ -19,10 +18,12 @@ from .const import (
     CONF_INTERVAL,
     CONF_PERSON_ENTITY_ID,
     CONF_PREFER_ZONE,
+    CONF_UPDATE_RULES,
     DEFAULT_DISTANCE_THRESHOLD,
     DEFAULT_FIELDS,
     DEFAULT_INTERVAL,
     DEFAULT_PREFER_ZONE,
+    DEFAULT_UPDATE_RULES,
     DOMAIN,
 )
 from .geocoder import async_reverse_lookup
@@ -37,6 +38,13 @@ def _entry_setting(entry: ConfigEntry, key: str, default: Any) -> Any:
     return entry.data.get(key, default)
 
 
+def _friendly_person_name_from_entity_id(entity_id: str) -> str:
+    """Return a readable person name from entity ID."""
+    if "." in entity_id:
+        entity_id = entity_id.split(".", 1)[1]
+    return entity_id.replace("_", " ").strip().title() or entity_id
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -44,9 +52,57 @@ async def async_setup_entry(
 ) -> None:
     """Set up sensor entities from a config entry."""
     cache = hass.data[DOMAIN][entry.entry_id]["cache"]
-    sensor = PersonAddressSensor(hass, entry, cache)
-    hass.data[DOMAIN][entry.entry_id]["sensor"] = sensor
-    async_add_entities([sensor], True)
+    stats_store = hass.data[DOMAIN][entry.entry_id]["stats_store"]
+    address_sensor = PersonAddressSensor(hass, entry, cache, stats_store)
+    api_sensor = PersonAddressMetricSensor(address_sensor, "api_calls")
+    cache_sensor = PersonAddressMetricSensor(address_sensor, "cache_hits")
+
+    hass.data[DOMAIN][entry.entry_id]["sensor"] = address_sensor
+    hass.data[DOMAIN][entry.entry_id]["metric_sensors"] = [api_sensor, cache_sensor]
+
+    async_add_entities([address_sensor, api_sensor, cache_sensor], True)
+
+
+class PersonAddressMetricSensor(SensorEntity):
+    """Diagnostic metric sensor for API and cache usage."""
+
+    _attr_should_poll = False
+    _attr_has_entity_name = True
+    _attr_entity_category = "diagnostic"
+    _attr_icon = "mdi:chart-line"
+
+    def __init__(self, parent: "PersonAddressSensor", metric_key: str) -> None:
+        self._parent = parent
+        self._metric_key = metric_key
+        self._attr_unique_id = f"{parent.entry.entry_id}_{metric_key}"
+        self._attr_name = "API calls" if metric_key == "api_calls" else "Cache hits"
+
+    @property
+    def available(self) -> bool:
+        return self._parent.available
+
+    @property
+    def native_value(self) -> int:
+        return int(self._parent.stats.get(self._metric_key, 0))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        total = self._parent.stats.get("api_calls", 0) + self._parent.stats.get(
+            "cache_hits", 0
+        )
+        hit_rate = round((self._parent.stats.get("cache_hits", 0) / total) * 100, 2) if total else 0.0
+        return {
+            "person_entity_id": self._parent.person_entity_id,
+            "person_name": self._parent.person_name,
+            "api_calls": self._parent.stats.get("api_calls", 0),
+            "cache_hits": self._parent.stats.get("cache_hits", 0),
+            "total_address_requests": total,
+            "cache_hit_rate_percent": hit_rate,
+        }
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return self._parent.device_info
 
 
 class PersonAddressSensor(SensorEntity):
@@ -55,16 +111,19 @@ class PersonAddressSensor(SensorEntity):
     _attr_should_poll = False
     _attr_icon = "mdi:map-marker"
     _attr_has_entity_name = True
-    _attr_name = None
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, cache) -> None:
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, cache, stats_store) -> None:
         self.hass = hass
         self.entry = entry
         self.cache = cache
+        self.stats_store = stats_store
 
         self.person_entity_id: str = entry.data[CONF_PERSON_ENTITY_ID]
         self.fields: list[str] = list(
             _entry_setting(entry, CONF_FIELDS, DEFAULT_FIELDS)
+        )
+        self.update_rules: list[str] = list(
+            _entry_setting(entry, CONF_UPDATE_RULES, DEFAULT_UPDATE_RULES)
         )
         self.interval: int = int(
             _entry_setting(entry, CONF_INTERVAL, DEFAULT_INTERVAL)
@@ -77,6 +136,7 @@ class PersonAddressSensor(SensorEntity):
         )
 
         self._person_name = self._resolve_person_name()
+        self._attr_name = f"{self._person_name} Address"
         self._attr_unique_id = f"{entry.entry_id}_combined_address"
         self._attr_native_value = None
         self._attr_extra_state_attributes = {}
@@ -85,6 +145,16 @@ class PersonAddressSensor(SensorEntity):
         self._last_lat: float | None = None
         self._last_lon: float | None = None
         self._last_update_ts: float | None = None
+        self._metric_entities: list[PersonAddressMetricSensor] = []
+        self.stats: dict[str, int] = {
+            "api_calls": 0,
+            "cache_hits": 0,
+        }
+
+    @property
+    def person_name(self) -> str:
+        """Return resolved person display name."""
+        return self._person_name
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -106,9 +176,16 @@ class PersonAddressSensor(SensorEntity):
             )
         )
 
+        metric_entities = self.hass.data.get(DOMAIN, {}).get(self.entry.entry_id, {}).get(
+            "metric_sensors", []
+        )
+        self._metric_entities = list(metric_entities)
+
+        self.stats = await self.stats_store.async_get(self.entry.entry_id)
+        self._async_write_metric_states()
+
         current_state = self.hass.states.get(self.person_entity_id)
         if current_state is not None:
-            # Do not block entity registration on startup.
             self.hass.async_create_task(
                 self._async_safe_process_state(current_state, force=True)
             )
@@ -143,10 +220,12 @@ class PersonAddressSensor(SensorEntity):
             self._attr_available = False
             self._attr_extra_state_attributes = {
                 "person_entity_id": self.person_entity_id,
+                "person_name": self.person_name,
                 "status": "update_failed",
                 "last_error": str(err),
             }
             self.async_write_ha_state()
+            self._async_write_metric_states()
             _LOGGER.exception(
                 "Failed updating address sensor for %s",
                 self.person_entity_id,
@@ -157,40 +236,60 @@ class PersonAddressSensor(SensorEntity):
         lat = state.attributes.get(ATTR_LATITUDE)
         lon = state.attributes.get(ATTR_LONGITUDE)
 
+        self._person_name = self._resolve_person_name(state)
+        self._attr_name = f"{self._person_name} Address"
+
         if lat is None or lon is None:
             self._attr_available = True
             self._attr_native_value = None
             self._attr_extra_state_attributes = {
                 "person_entity_id": self.person_entity_id,
+                "person_name": self.person_name,
                 "status": "no_coordinates",
             }
             self.async_write_ha_state()
+            self._async_write_metric_states()
             _LOGGER.warning("No coordinates available for %s", self.person_entity_id)
             return
 
         now_ts = self.hass.loop.time()
+        distance = None
+        time_passed = True
+        moved = True
+        triggered_rules: list[str] = []
+        enabled_rules = set(self.update_rules)
 
-        if not force and self._last_lat is not None and self._last_lon is not None:
-            distance = _distance_meters(self._last_lat, self._last_lon, lat, lon)
-            if distance < self.distance_threshold:
+        if not force:
+            if self._last_lat is not None and self._last_lon is not None:
+                distance = _distance_meters(self._last_lat, self._last_lon, lat, lon)
+                moved = distance >= self.distance_threshold
+            if self._last_update_ts is not None:
+                time_passed = (now_ts - self._last_update_ts) >= self.interval
+
+            if "distance_threshold" in enabled_rules and moved:
+                triggered_rules.append("distance_threshold")
+            if "time_interval" in enabled_rules and time_passed:
+                triggered_rules.append("time_interval")
+
+            if enabled_rules and not triggered_rules:
                 _LOGGER.debug(
-                    "Skipping update for %s: moved %.2f m, threshold is %s m",
+                    (
+                        "Skipping update for %s: enabled_rules=%s distance=%.2f "
+                        "threshold=%s time_passed=%s interval=%s"
+                    ),
                     self.person_entity_id,
-                    distance,
+                    sorted(enabled_rules),
+                    distance or 0,
                     self.distance_threshold,
+                    time_passed,
+                    self.interval,
                 )
                 return
 
-        if (
-            not force
-            and self._last_update_ts is not None
-            and (now_ts - self._last_update_ts) < self.interval
-        ):
-            _LOGGER.debug(
-                "Skipping update for %s: interval not reached",
-                self.person_entity_id,
-            )
-            return
+            if not enabled_rules:
+                triggered_rules.append("state_change")
+        else:
+            triggered_rules.append("force_update")
 
         zone_name = None
         if self.prefer_zone:
@@ -198,12 +297,13 @@ class PersonAddressSensor(SensorEntity):
 
         cache_key = f"{round(lat, 6)},{round(lon, 6)}"
         address_data = {} if force else (await self.cache.async_get(cache_key) or {})
+        data_source = "cache" if address_data else "api"
 
         if address_data:
+            self.stats["cache_hits"] += 1
+            await self._async_persist_stats()
             _LOGGER.debug("Using cached address for %s", self.person_entity_id)
 
-        # Always attempt reverse geocoding if we do not already have cached data.
-        # This keeps road/suburb/city/state/country available even when a zone matches.
         if not address_data:
             _LOGGER.debug(
                 "Reverse geocoding %s at lat=%s lon=%s",
@@ -212,13 +312,15 @@ class PersonAddressSensor(SensorEntity):
                 lon,
             )
             looked_up = await async_reverse_lookup(self.hass, lat, lon)
+            self.stats["api_calls"] += 1
+            await self._async_persist_stats()
             if looked_up is None:
-                # If geocoding fails but zone exists, still provide the zone as fallback.
                 if zone_name:
                     address_data = {
                         "zone": zone_name,
                         "full_address": zone_name,
                     }
+                    data_source = "zone_fallback"
                     _LOGGER.warning(
                         "Reverse geocoding failed for %s, falling back to zone '%s'",
                         self.person_entity_id,
@@ -229,11 +331,17 @@ class PersonAddressSensor(SensorEntity):
                     self._attr_native_value = None
                     self._attr_extra_state_attributes = {
                         "person_entity_id": self.person_entity_id,
+                        "person_name": self.person_name,
                         "status": "geocode_failed",
                         "latitude": lat,
                         "longitude": lon,
+                        "triggered_rules": triggered_rules,
+                        "configured_update_rules": self.update_rules,
+                        "api_calls": self.stats["api_calls"],
+                        "cache_hits": self.stats["cache_hits"],
                     }
                     self.async_write_ha_state()
+                    self._async_write_metric_states()
                     _LOGGER.warning(
                         "Reverse geocoding returned no result for %s",
                         self.person_entity_id,
@@ -243,25 +351,35 @@ class PersonAddressSensor(SensorEntity):
                 address_data = looked_up
                 await self.cache.async_set(cache_key, address_data)
 
-        # Overlay zone information without destroying normal address fields.
         if zone_name:
             address_data["zone"] = zone_name
 
         combined = self._format_selected_fields(address_data)
-
-        # Fallbacks so sensor state is not blank when data exists.
         if not combined:
             combined = address_data.get("full_address") or address_data.get("zone") or None
 
-        self._person_name = self._resolve_person_name()
+        total_requests = self.stats["api_calls"] + self.stats["cache_hits"]
+        cache_hit_rate = round((self.stats["cache_hits"] / total_requests) * 100, 2) if total_requests else 0.0
+
         self._attr_available = True
         self._attr_native_value = combined
         self._attr_extra_state_attributes = {
             "person_entity_id": self.person_entity_id,
+            "person_name": self.person_name,
             "selected_fields": self.fields,
+            "configured_update_rules": self.update_rules,
+            "triggered_rules": triggered_rules,
             "latitude": lat,
             "longitude": lon,
+            "distance_from_last_update_m": round(distance, 2) if distance is not None else None,
+            "minimum_distance_threshold_m": self.distance_threshold,
+            "minimum_update_interval_s": self.interval,
             "force_update_supported": True,
+            "data_source": data_source,
+            "api_calls": self.stats["api_calls"],
+            "cache_hits": self.stats["cache_hits"],
+            "total_address_requests": total_requests,
+            "cache_hit_rate_percent": cache_hit_rate,
             **address_data,
         }
 
@@ -270,18 +388,30 @@ class PersonAddressSensor(SensorEntity):
         self._last_update_ts = now_ts
 
         self.async_write_ha_state()
+        self._async_write_metric_states()
         _LOGGER.warning(
-            "Updated %s address sensor to '%s'",
+            "Updated %s address sensor to '%s' using %s",
             self.person_entity_id,
             self._attr_native_value,
+            data_source,
         )
 
-    def _resolve_person_name(self) -> str:
-        """Resolve person display name."""
-        state = self.hass.states.get(self.person_entity_id)
+    def _async_write_metric_states(self) -> None:
+        """Refresh linked metric entities."""
+        for entity in self._metric_entities:
+            entity.async_write_ha_state()
+
+    async def _async_persist_stats(self) -> None:
+        """Persist API/cache counters to disk."""
+        await self.stats_store.async_set(self.entry.entry_id, self.stats)
+
+    def _resolve_person_name(self, state=None) -> str:
+        """Resolve person display name with a readable fallback."""
+        if state is None:
+            state = self.hass.states.get(self.person_entity_id)
         if state and state.name:
             return state.name
-        return self.person_entity_id
+        return _friendly_person_name_from_entity_id(self.person_entity_id)
 
     def _format_selected_fields(self, address_data: dict[str, Any]) -> str:
         """Build one comma-separated string from selected fields."""

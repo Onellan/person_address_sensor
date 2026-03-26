@@ -15,13 +15,25 @@ from .const import (
     CONF_INTERVAL,
     CONF_PERSON_ENTITY_ID,
     CONF_PREFER_ZONE,
+    CONF_UPDATE_RULES,
     DEFAULT_DISTANCE_THRESHOLD,
     DEFAULT_FIELDS,
     DEFAULT_INTERVAL,
     DEFAULT_PREFER_ZONE,
+    DEFAULT_UPDATE_RULES,
     DOMAIN,
+    FIELD_LABELS,
     FIELD_OPTIONS,
+    UPDATE_RULE_LABELS,
+    UPDATE_RULE_OPTIONS,
 )
+
+
+def _friendly_person_name(entity_id: str) -> str:
+    """Create a readable fallback name from a person entity ID."""
+    if "." in entity_id:
+        entity_id = entity_id.split(".", 1)[1]
+    return entity_id.replace("_", " ").strip().title() or entity_id
 
 
 def _person_selector(hass) -> dict[str, Any]:
@@ -38,24 +50,6 @@ def _person_selector(hass) -> dict[str, Any]:
     )
 
 
-def _field_labels() -> dict[str, str]:
-    """Return labels for supported address fields."""
-    return {
-        "full_address": "Full address",
-        "house_number": "House number",
-        "road": "Road / street",
-        "suburb": "Suburb",
-        "neighbourhood": "Neighbourhood",
-        "city": "City / town",
-        "county": "County",
-        "state": "State / province",
-        "postcode": "Postcode",
-        "country": "Country",
-        "country_code": "Country code",
-        "zone": "Home Assistant zone",
-    }
-
-
 def _sanitize_fields(fields: list[str] | None) -> list[str]:
     """Keep only valid fields, preserving order."""
     if not fields:
@@ -65,6 +59,15 @@ def _sanitize_fields(fields: list[str] | None) -> list[str]:
     return valid or list(DEFAULT_FIELDS)
 
 
+def _sanitize_update_rules(rules: list[str] | None) -> list[str]:
+    """Keep only valid update rules, preserving order."""
+    if rules is None:
+        return list(DEFAULT_UPDATE_RULES)
+
+    valid = [rule for rule in rules if rule in UPDATE_RULE_OPTIONS]
+    return valid
+
+
 def _settings_schema(defaults: dict[str, Any]) -> vol.Schema:
     """Schema for configurable sensor settings."""
     return vol.Schema(
@@ -72,7 +75,11 @@ def _settings_schema(defaults: dict[str, Any]) -> vol.Schema:
             vol.Required(
                 CONF_FIELDS,
                 default=_sanitize_fields(defaults.get(CONF_FIELDS)),
-            ): cv.multi_select(_field_labels()),
+            ): cv.multi_select(FIELD_LABELS),
+            vol.Required(
+                CONF_UPDATE_RULES,
+                default=_sanitize_update_rules(defaults.get(CONF_UPDATE_RULES)),
+            ): cv.multi_select(UPDATE_RULE_LABELS),
             vol.Required(
                 CONF_INTERVAL,
                 default=int(defaults.get(CONF_INTERVAL, DEFAULT_INTERVAL)),
@@ -132,7 +139,7 @@ def _entry_setting(entry, key: str, default: Any) -> Any:
 class PersonAddressConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle config flow for Person Address Sensor."""
 
-    VERSION = 4
+    VERSION = 5
 
     async def async_step_user(self, user_input=None):
         """Handle the initial setup flow."""
@@ -143,10 +150,13 @@ class PersonAddressConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
 
             return self.async_create_entry(
-                title=person_entity_id,
+                title=_friendly_person_name(person_entity_id),
                 data={
                     CONF_PERSON_ENTITY_ID: person_entity_id,
                     CONF_FIELDS: _sanitize_fields(user_input[CONF_FIELDS]),
+                    CONF_UPDATE_RULES: _sanitize_update_rules(
+                        user_input.get(CONF_UPDATE_RULES)
+                    ),
                     CONF_INTERVAL: int(user_input[CONF_INTERVAL]),
                     CONF_DISTANCE_THRESHOLD: int(
                         user_input[CONF_DISTANCE_THRESHOLD]
@@ -157,6 +167,7 @@ class PersonAddressConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         defaults = {
             CONF_FIELDS: DEFAULT_FIELDS,
+            CONF_UPDATE_RULES: DEFAULT_UPDATE_RULES,
             CONF_INTERVAL: DEFAULT_INTERVAL,
             CONF_DISTANCE_THRESHOLD: DEFAULT_DISTANCE_THRESHOLD,
             CONF_PREFER_ZONE: DEFAULT_PREFER_ZONE,
@@ -191,7 +202,7 @@ class PersonAddressConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             self.hass.config_entries.async_update_entry(
                 entry,
-                title=new_person,
+                title=_friendly_person_name(new_person),
                 unique_id=new_person,
                 data={
                     **entry.data,
@@ -230,6 +241,9 @@ class PersonAddressOptionsFlow(config_entries.OptionsFlow):
                 title="",
                 data={
                     CONF_FIELDS: _sanitize_fields(user_input[CONF_FIELDS]),
+                    CONF_UPDATE_RULES: _sanitize_update_rules(
+                        user_input.get(CONF_UPDATE_RULES)
+                    ),
                     CONF_INTERVAL: int(user_input[CONF_INTERVAL]),
                     CONF_DISTANCE_THRESHOLD: int(
                         user_input[CONF_DISTANCE_THRESHOLD]
@@ -241,6 +255,9 @@ class PersonAddressOptionsFlow(config_entries.OptionsFlow):
         defaults = {
             CONF_FIELDS: _entry_setting(
                 self.config_entry, CONF_FIELDS, DEFAULT_FIELDS
+            ),
+            CONF_UPDATE_RULES: _entry_setting(
+                self.config_entry, CONF_UPDATE_RULES, DEFAULT_UPDATE_RULES
             ),
             CONF_INTERVAL: _entry_setting(
                 self.config_entry, CONF_INTERVAL, DEFAULT_INTERVAL

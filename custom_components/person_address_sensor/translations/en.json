@@ -12,10 +12,11 @@
     "step": {
       "user": {
         "title": "Set up person address sensor",
-        "description": "Choose the person and how the address sensor should behave.",
+        "description": "Choose the person, the address fields, and the update rules to apply.",
         "data": {
           "person_entity_id": "Person",
           "fields": "Fields to show",
+          "update_rules": "Update rules to apply",
           "interval": "Minimum update interval (seconds)",
           "distance_threshold": "Minimum movement before update (meters)",
           "prefer_zone": "Use Home Assistant zone name when available"
@@ -34,9 +35,10 @@
     "step": {
       "init": {
         "title": "Edit person address sensor",
-        "description": "Update the selected fields and behaviour.",
+        "description": "Update the selected fields, update rules, and behaviour.",
         "data": {
           "fields": "Fields to show",
+          "update_rules": "Update rules to apply",
           "interval": "Minimum update interval (seconds)",
           "distance_threshold": "Minimum movement before update (meters)",
           "prefer_zone": "Use Home Assistant zone name when available"

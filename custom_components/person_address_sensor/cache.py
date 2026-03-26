@@ -65,3 +65,68 @@ class AddressCache:
         payload["_timestamp"] = time.time()
         self._cache[key] = payload
         await self.async_save()
+
+class PersistentStatsStore:
+    """Async-safe persistent store for per-entry performance counters."""
+
+    def __init__(self, hass: HomeAssistant, stats_path: str | Path) -> None:
+        self.hass = hass
+        self.path = Path(stats_path)
+        self._stats: dict[str, dict[str, int]] = {}
+
+    async def async_load(self) -> None:
+        """Load stats from disk."""
+        if not self.path.exists():
+            self._stats = {}
+            return
+
+        def _read() -> dict[str, dict[str, int]]:
+            try:
+                data = json.loads(self.path.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    return {
+                        str(entry_id): {
+                            "api_calls": int(values.get("api_calls", 0)),
+                            "cache_hits": int(values.get("cache_hits", 0)),
+                        }
+                        for entry_id, values in data.items()
+                        if isinstance(values, dict)
+                    }
+            except Exception:
+                pass
+            return {}
+
+        self._stats = await self.hass.async_add_executor_job(_read)
+
+    async def async_save(self) -> None:
+        """Save stats to disk."""
+
+        def _write() -> None:
+            self.path.write_text(
+                json.dumps(self._stats, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+        await self.hass.async_add_executor_job(_write)
+
+    async def async_get(self, entry_id: str) -> dict[str, int]:
+        """Return persisted counters for one config entry."""
+        values = self._stats.get(entry_id, {})
+        return {
+            "api_calls": int(values.get("api_calls", 0)),
+            "cache_hits": int(values.get("cache_hits", 0)),
+        }
+
+    async def async_set(self, entry_id: str, stats: dict[str, int]) -> None:
+        """Persist counters for one config entry."""
+        self._stats[entry_id] = {
+            "api_calls": int(stats.get("api_calls", 0)),
+            "cache_hits": int(stats.get("cache_hits", 0)),
+        }
+        await self.async_save()
+
+    async def async_remove(self, entry_id: str) -> None:
+        """Remove persisted counters for one config entry."""
+        if entry_id in self._stats:
+            self._stats.pop(entry_id, None)
+            await self.async_save()
